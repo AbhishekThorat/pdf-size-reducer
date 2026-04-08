@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF Size Reducer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #f0f4f8; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .card { background: white; border-radius: 16px; padding: 32px; max-width: 480px; width: 100%; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
+  h1 { font-size: 1.4rem; font-weight: 700; color: #1a202c; margin-bottom: 6px; }
+  .sub { color: #718096; font-size: 0.875rem; margin-bottom: 24px; }
+  .drop-zone { border: 2px dashed #cbd5e0; border-radius: 12px; padding: 36px 20px; text-align: center; cursor: pointer; transition: all 0.2s; background: #f7fafc; }
+  .drop-zone:hover, .drop-zone.active { border-color: #667eea; background: #ebf4ff; }
+  .drop-zone svg { margin-bottom: 10px; }
+  .drop-zone p { color: #4a5568; font-size: 0.9rem; }
+  .drop-zone span { color: #667eea; font-weight: 600; cursor: pointer; }
+  #fileInput { display: none; }
+  .file-info { margin-top: 20px; background: #f7fafc; border-radius: 10px; padding: 14px 16px; display: none; }
+  .file-info .name { font-weight: 600; color: #2d3748; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .file-info .size { color: #718096; font-size: 0.8rem; margin-top: 2px; }
+  .quality-row { margin-top: 22px; display: flex; align-items: center; justify-content: space-between; }
+  .quality-row label { font-size: 0.875rem; font-weight: 600; color: #2d3748; }
+  .quality-row .val { font-size: 0.875rem; color: #667eea; font-weight: 700; }
+  input[type=range] { width: 100%; margin-top: 8px; accent-color: #667eea; }
+  .hint { font-size: 0.75rem; color: #a0aec0; margin-top: 4px; }
+  .btn { width: 100%; margin-top: 22px; padding: 13px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; border: none; border-radius: 10px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
+  .btn:hover:not(:disabled) { opacity: 0.9; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .progress-wrap { margin-top: 18px; display: none; }
+  .progress-bar { height: 6px; background: #e2e8f0; border-radius: 99px; overflow: hidden; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, #667eea, #764ba2); width: 0%; transition: width 0.3s; border-radius: 99px; }
+  .progress-label { font-size: 0.8rem; color: #718096; margin-top: 6px; text-align: center; }
+  .result { margin-top: 20px; padding: 14px 16px; border-radius: 10px; display: none; }
+  .result.success { background: #f0fff4; border: 1px solid #9ae6b4; }
+  .result.warning { background: #fffbeb; border: 1px solid #f6e05e; }
+  .result .r-title { font-weight: 700; font-size: 0.9rem; }
+  .result.success .r-title { color: #276749; }
+  .result.warning .r-title { color: #744210; }
+  .result .r-sub { font-size: 0.8rem; margin-top: 4px; color: #4a5568; }
+  .dl-btn { width: 100%; margin-top: 14px; padding: 11px; background: #276749; color: white; border: none; border-radius: 10px; font-size: 0.9rem; font-weight: 600; cursor: pointer; display: none; }
+  .dl-btn:hover { background: #2f855a; }
+  .note { margin-top: 18px; background: #ebf4ff; border-radius: 8px; padding: 10px 14px; font-size: 0.78rem; color: #2b6cb0; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>📄 PDF Size Reducer</h1>
+  <p class="sub">Compress your PDF to fit under 19.5 MB</p>
+
+  <div class="drop-zone" id="dropZone">
+    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#a0aec0" stroke-width="1.5">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+      <line x1="12" y1="18" x2="12" y2="12"/>
+      <polyline points="9 15 12 12 15 15"/>
+    </svg>
+    <p>Drop your PDF here or <span onclick="document.getElementById('fileInput').click()">browse</span></p>
+    <p style="font-size:0.75rem;color:#a0aec0;margin-top:6px;">PDF files only</p>
+  </div>
+  <input type="file" id="fileInput" accept=".pdf,application/pdf">
+
+  <div class="file-info" id="fileInfo">
+    <div class="name" id="fileName"></div>
+    <div class="size" id="fileSize"></div>
+  </div>
+
+  <div style="margin-top:22px;">
+    <div class="quality-row">
+      <label>Image Quality</label>
+      <span class="val" id="qualVal">60%</span>
+    </div>
+    <input type="range" id="quality" min="10" max="90" value="60">
+    <div class="hint">Lower quality = smaller file size. Try 40–60% for best balance.</div>
+  </div>
+
+  <button class="btn" id="compressBtn" disabled>Compress PDF</button>
+
+  <div class="progress-wrap" id="progressWrap">
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="progress-label" id="progressLabel">Processing...</div>
+  </div>
+
+  <div class="result" id="result">
+    <div class="r-title" id="resultTitle"></div>
+    <div class="r-sub" id="resultSub"></div>
+  </div>
+  <button class="dl-btn" id="dlBtn">⬇ Download Compressed PDF</button>
+
+  <div class="note">ℹ️ This tool re-renders PDF pages as compressed images. Best for image-heavy PDFs. Text-only PDFs may not compress as much.</div>
+</div>
+
+<script>
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+  const TARGET = 19.5 * 1024 * 1024;
+  let selectedFile = null, compressedBlob = null;
+
+  const dropZone = document.getElementById('dropZone');
+  const fileInput = document.getElementById('fileInput');
+  const fileInfo = document.getElementById('fileInfo');
+  const fileName = document.getElementById('fileName');
+  const fileSize = document.getElementById('fileSize');
+  const qualSlider = document.getElementById('quality');
+  const qualVal = document.getElementById('qualVal');
+  const compressBtn = document.getElementById('compressBtn');
+  const progressWrap = document.getElementById('progressWrap');
+  const progressFill = document.getElementById('progressFill');
+  const progressLabel = document.getElementById('progressLabel');
+  const result = document.getElementById('result');
+  const resultTitle = document.getElementById('resultTitle');
+  const resultSub = document.getElementById('resultSub');
+  const dlBtn = document.getElementById('dlBtn');
+
+  qualSlider.oninput = () => qualVal.textContent = qualSlider.value + '%';
+
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('active'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('active'));
+  dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('active'); handleFile(e.dataTransfer.files[0]); });
+  fileInput.onchange = () => handleFile(fileInput.files[0]);
+
+  function handleFile(f) {
+    if (!f || f.type !== 'application/pdf') return alert('Please select a PDF file.');
+    selectedFile = f;
+    fileName.textContent = f.name;
+    fileSize.textContent = `Original size: ${fmt(f.size)}`;
+    fileInfo.style.display = 'block';
+    compressBtn.disabled = false;
+    result.style.display = 'none';
+    dlBtn.style.display = 'none';
+  }
+
+  function fmt(b) {
+    if (b >= 1024*1024) return (b/1024/1024).toFixed(2) + ' MB';
+    return (b/1024).toFixed(1) + ' KB';
+  }
+
+  compressBtn.onclick = async () => {
+    if (!selectedFile) return;
+    compressBtn.disabled = true;
+    progressWrap.style.display = 'block';
+    result.style.display = 'none';
+    dlBtn.style.display = 'none';
+    compressedBlob = null;
+
+    try {
+      const q = parseInt(qualSlider.value) / 100;
+      const arrayBuffer = await selectedFile.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const total = pdf.numPages;
+
+      // Build a simple PDF manually using canvas-rendered pages
+      const pages = [];
+      for (let i = 1; i <= total; i++) {
+        progressFill.style.width = ((i-1)/total*80) + '%';
+        progressLabel.textContent = `Rendering page ${i} of ${total}...`;
+        const page = await pdf.getPage(i);
+        const vp = page.getViewport({ scale: 1.5 });
+        const canvas = document.createElement('canvas');
+        canvas.width = vp.width; canvas.height = vp.height;
+        const ctx = canvas.getContext('2d');
+        await page.render({ canvasContext: ctx, viewport: vp }).promise;
+        const dataUrl = canvas.toDataURL('image/jpeg', q);
+        pages.push({ dataUrl, w: vp.width, h: vp.height });
+      }
+
+      progressFill.style.width = '90%';
+      progressLabel.textContent = 'Building compressed PDF...';
+
+      // Minimal PDF builder
+      const pdfBytes = buildPDF(pages);
+      compressedBlob = new Blob([pdfBytes], { type: 'application/pdf' });
+
+      progressFill.style.width = '100%';
+      progressLabel.textContent = 'Done!';
+
+      const ok = compressedBlob.size <= TARGET;
+      result.className = 'result ' + (ok ? 'success' : 'warning');
+      result.style.display = 'block';
+      resultTitle.textContent = ok ? '✅ Successfully compressed!' : '⚠️ Still above 19.5 MB';
+      resultSub.textContent = `Compressed size: ${fmt(compressedBlob.size)} (was ${fmt(selectedFile.size)}) — ${Math.round((1 - compressedBlob.size/selectedFile.size)*100)}% reduction`;
+      if (!ok) resultSub.textContent += '\nTry lowering the quality slider further.';
+
+      dlBtn.style.display = 'block';
+    } catch(e) {
+      alert('Error compressing PDF: ' + e.message);
+      console.error(e);
+    } finally {
+      compressBtn.disabled = false;
+    }
+  };
+
+  dlBtn.onclick = () => {
+    if (!compressedBlob) return;
+    const url = URL.createObjectURL(compressedBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = selectedFile.name.replace('.pdf', '_compressed.pdf');
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  function buildPDF(pages) {
+    // Minimal valid PDF with JPEG images
+    const enc = s => new TextEncoder().encode(s);
+    const parts = [];
+    let offset = 0;
+    const offsets = [];
+
+    const push = s => { const b = typeof s === 'string' ? enc(s) : s; parts.push(b); offset += b.length; };
+
+    push('%PDF-1.4\n');
+
+    const imgNums = [], pageNums = [], xObjNums = [];
+    let objNum = 1;
+
+    // Image objects
+    for (let i = 0; i < pages.length; i++) {
+      const { dataUrl, w, h } = pages[i];
+      const b64 = dataUrl.split(',')[1];
+      const imgData = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      offsets[objNum] = offset;
+      imgNums.push(objNum);
+      push(`${objNum} 0 obj\n<< /Type /XObject /Subtype /Image /Width ${Math.round(w)} /Height ${Math.round(h)} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${imgData.length} >>\nstream\n`);
+      push(imgData);
+      push('\nendstream\nendobj\n');
+      objNum++;
+    }
+
+    // Page objects
+    const pagesRef = objNum + pages.length; // will be pages dict
+    for (let i = 0; i < pages.length; i++) {
+      const { w, h } = pages[i];
+      offsets[objNum] = offset;
+      pageNums.push(objNum);
+      const content = `q ${Math.round(w)} 0 0 ${Math.round(h)} 0 0 cm /Im${i} Do Q`;
+      const cLen = content.length;
+      // content stream obj
+      const contentObjNum = objNum + pages.length + 1 + i;
+      push(`${objNum} 0 obj\n<< /Type /Page /Parent ${pagesRef} 0 R /MediaBox [0 0 ${Math.round(w)} ${Math.round(h)}] /Resources << /XObject << /Im${i} ${imgNums[i]} 0 R >> >> /Contents ${contentObjNum} 0 R >>\nendobj\n`);
+      objNum++;
+    }
+
+    // Pages dict
+    offsets[objNum] = offset;
+    const pagesObj = objNum;
+    push(`${objNum} 0 obj\n<< /Type /Pages /Kids [${pageNums.map(n => n+' 0 R').join(' ')}] /Count ${pages.length} >>\nendobj\n`);
+    objNum++;
+
+    // Content streams
+    for (let i = 0; i < pages.length; i++) {
+      const { w, h } = pages[i];
+      offsets[objNum] = offset;
+      const content = `q ${Math.round(w)} 0 0 ${Math.round(h)} 0 0 cm /Im${i} Do Q`;
+      push(`${objNum} 0 obj\n<< /Length ${content.length} >>\nstream\n${content}\nendstream\nendobj\n`);
+      objNum++;
+    }
+
+    // Catalog
+    offsets[objNum] = offset;
+    const catalogObj = objNum;
+    push(`${objNum} 0 obj\n<< /Type /Catalog /Pages ${pagesObj} 0 R >>\nendobj\n`);
+    objNum++;
+
+    // xref
+    const xrefOffset = offset;
+    push(`xref\n0 ${objNum}\n0000000000 65535 f \n`);
+    for (let i = 1; i < objNum; i++) {
+      push(String(offsets[i]).padStart(10,'0') + ' 00000 n \n');
+    }
+    push(`trailer\n<< /Size ${objNum} /Root ${catalogObj} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`);
+
+    // Combine
+    const total = parts.reduce((s, p) => s + p.length, 0);
+    const out = new Uint8Array(total);
+    let pos = 0;
+    for (const p of parts) { out.set(p, pos); pos += p.length; }
+    return out;
+  }
+</script>
+</body>
+</html>
