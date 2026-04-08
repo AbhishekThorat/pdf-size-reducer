@@ -25,6 +25,16 @@
   .quality-row .val { font-size: 0.875rem; color: #667eea; font-weight: 700; }
   input[type=range] { width: 100%; margin-top: 8px; accent-color: #667eea; }
   .hint { font-size: 0.75rem; color: #a0aec0; margin-top: 4px; }
+  .target-wrap { margin-top: 14px; }
+  .target-wrap label { display: block; font-size: 0.875rem; font-weight: 600; color: #2d3748; margin-bottom: 6px; }
+  .target-wrap input { width: 100%; padding: 10px 12px; border: 1px solid #cbd5e0; border-radius: 8px; font-size: 0.9rem; color: #2d3748; }
+  .target-wrap input:focus { outline: none; border-color: #667eea; box-shadow: 0 0 0 2px rgba(102,126,234,0.15); }
+  .target-wrap input.invalid { border-color: #e53e3e; box-shadow: 0 0 0 2px rgba(229,62,62,0.12); }
+  .preset-row { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .preset-btn { border: 1px solid #cbd5e0; background: #fff; color: #4a5568; border-radius: 999px; padding: 5px 10px; font-size: 0.78rem; cursor: pointer; }
+  .preset-btn:hover { border-color: #667eea; color: #667eea; }
+  .preset-btn.active { background: #ebf4ff; border-color: #667eea; color: #4c51bf; }
+  .field-error { margin-top: 6px; font-size: 0.75rem; color: #e53e3e; min-height: 16px; }
   .btn { width: 100%; margin-top: 22px; padding: 13px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; border: none; border-radius: 10px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
   .btn:hover:not(:disabled) { opacity: 0.9; }
   .btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -47,7 +57,7 @@
 <body>
 <div class="card">
   <h1>📄 PDF Size Reducer</h1>
-  <p class="sub">Compress your PDF to fit under 19.5 MB</p>
+  <p class="sub">Compress your PDF to fit under your target size</p>
 
   <div class="drop-zone" id="dropZone">
     <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#a0aec0" stroke-width="1.5">
@@ -73,6 +83,17 @@
     </div>
     <input type="range" id="quality" min="10" max="90" value="60">
     <div class="hint">Lower quality = smaller file size. Try 40–60% for best balance.</div>
+
+    <div class="target-wrap">
+      <label for="targetMb">Target Size (MB)</label>
+      <input type="number" id="targetMb" min="1" step="0.1" value="19.5">
+      <div class="preset-row" id="presetRow">
+        <button type="button" class="preset-btn" data-value="10">10 MB</button>
+        <button type="button" class="preset-btn active" data-value="19.5">19.5 MB</button>
+        <button type="button" class="preset-btn" data-value="25">25 MB</button>
+      </div>
+      <div class="field-error" id="targetError"></div>
+    </div>
   </div>
 
   <button class="btn" id="compressBtn" disabled>Compress PDF</button>
@@ -94,7 +115,6 @@
 <script>
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-  const TARGET = 19.5 * 1024 * 1024;
   let selectedFile = null, compressedBlob = null;
 
   const dropZone = document.getElementById('dropZone');
@@ -104,6 +124,9 @@
   const fileSize = document.getElementById('fileSize');
   const qualSlider = document.getElementById('quality');
   const qualVal = document.getElementById('qualVal');
+  const targetMbInput = document.getElementById('targetMb');
+  const presetRow = document.getElementById('presetRow');
+  const targetError = document.getElementById('targetError');
   const compressBtn = document.getElementById('compressBtn');
   const progressWrap = document.getElementById('progressWrap');
   const progressFill = document.getElementById('progressFill');
@@ -112,6 +135,9 @@
   const resultTitle = document.getElementById('resultTitle');
   const resultSub = document.getElementById('resultSub');
   const dlBtn = document.getElementById('dlBtn');
+
+  const TARGET_MIN_MB = 1;
+  const TARGET_MAX_MB = 500;
 
   qualSlider.oninput = () => qualVal.textContent = qualSlider.value + '%';
 
@@ -126,7 +152,7 @@
     fileName.textContent = f.name;
     fileSize.textContent = `Original size: ${fmt(f.size)}`;
     fileInfo.style.display = 'block';
-    compressBtn.disabled = false;
+    updateCompressState();
     result.style.display = 'none';
     dlBtn.style.display = 'none';
   }
@@ -135,6 +161,58 @@
     if (b >= 1024*1024) return (b/1024/1024).toFixed(2) + ' MB';
     return (b/1024).toFixed(1) + ' KB';
   }
+
+  function parseTargetMb() {
+    const raw = targetMbInput.value.trim();
+    if (!raw) return { ok: false, message: 'Target size is required.' };
+
+    const normalized = raw.replace(',', '.');
+    const targetMb = Number(normalized);
+    if (!Number.isFinite(targetMb)) return { ok: false, message: 'Target size must be a valid number.' };
+    if (targetMb < TARGET_MIN_MB) return { ok: false, message: `Target must be at least ${TARGET_MIN_MB} MB.` };
+    if (targetMb > TARGET_MAX_MB) return { ok: false, message: `Target must be ${TARGET_MAX_MB} MB or less.` };
+
+    return { ok: true, mb: targetMb, bytes: targetMb * 1024 * 1024 };
+  }
+
+  function applyTargetValidation() {
+    const parsed = parseTargetMb();
+    if (parsed.ok) {
+      targetError.textContent = '';
+      targetMbInput.classList.remove('invalid');
+    } else {
+      targetError.textContent = parsed.message;
+      targetMbInput.classList.add('invalid');
+    }
+    return parsed;
+  }
+
+  function updatePresetActiveState() {
+    const parsed = parseTargetMb();
+    for (const btn of presetRow.querySelectorAll('.preset-btn')) {
+      const isMatch = parsed.ok && Math.abs(Number(btn.dataset.value) - parsed.mb) < 0.001;
+      btn.classList.toggle('active', isMatch);
+    }
+  }
+
+  function updateCompressState() {
+    const parsed = applyTargetValidation();
+    compressBtn.disabled = !selectedFile || !parsed.ok;
+  }
+
+  targetMbInput.addEventListener('input', () => {
+    updatePresetActiveState();
+    updateCompressState();
+  });
+  targetMbInput.addEventListener('blur', updateCompressState);
+
+  presetRow.addEventListener('click', e => {
+    const btn = e.target.closest('.preset-btn');
+    if (!btn) return;
+    targetMbInput.value = btn.dataset.value;
+    updatePresetActiveState();
+    updateCompressState();
+  });
 
   compressBtn.onclick = async () => {
     if (!selectedFile) return;
@@ -145,6 +223,14 @@
     compressedBlob = null;
 
     try {
+      const target = applyTargetValidation();
+      if (!target.ok) {
+        progressWrap.style.display = 'none';
+        progressFill.style.width = '0%';
+        progressLabel.textContent = 'Processing...';
+        return;
+      }
+
       const q = parseInt(qualSlider.value) / 100;
       const arrayBuffer = await selectedFile.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -175,19 +261,23 @@
       progressFill.style.width = '100%';
       progressLabel.textContent = 'Done!';
 
-      const ok = compressedBlob.size <= TARGET;
+      const ok = compressedBlob.size <= target.bytes;
+      const targetLabel = target.mb.toFixed(1) + ' MB';
       result.className = 'result ' + (ok ? 'success' : 'warning');
       result.style.display = 'block';
-      resultTitle.textContent = ok ? '✅ Successfully compressed!' : '⚠️ Still above 19.5 MB';
+      resultTitle.textContent = ok ? `✅ Successfully compressed under ${targetLabel}!` : `⚠️ Still above ${targetLabel}`;
       resultSub.textContent = `Compressed size: ${fmt(compressedBlob.size)} (was ${fmt(selectedFile.size)}) — ${Math.round((1 - compressedBlob.size/selectedFile.size)*100)}% reduction`;
       if (!ok) resultSub.textContent += '\nTry lowering the quality slider further.';
 
       dlBtn.style.display = 'block';
     } catch(e) {
-      alert('Error compressing PDF: ' + e.message);
+      progressWrap.style.display = 'none';
+      progressFill.style.width = '0%';
+      progressLabel.textContent = 'Processing...';
+      alert('Error compressing PDF: ' + (e && e.message ? e.message : 'Unknown error.'));
       console.error(e);
     } finally {
-      compressBtn.disabled = false;
+      updateCompressState();
     }
   };
 
