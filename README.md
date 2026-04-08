@@ -3,6 +3,10 @@
 A lightweight browser-based PDF compressor built as a single HTML file.  
 It helps reduce PDF file size by re-rendering pages as compressed JPEG images and rebuilding a downloadable PDF.
 
+## Live Demo
+
+[Open PDF Size Reducer](https://abhishekthorat.github.io/pdf-size-reducer/)
+
 ## Features
 
 - Drag-and-drop PDF upload
