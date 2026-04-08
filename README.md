@@ -21,11 +21,24 @@ It helps reduce PDF file size by re-rendering pages as compressed JPEG images an
 
 ## Usage
 
-1. Open `pdf_compressor.html` in any modern browser.
+1. Open `index.html` in any modern browser.
 2. Upload or drag-and-drop a PDF file.
 3. Adjust quality (recommended 40-60% for balance).
 4. Click **Compress PDF**.
 5. Download the generated compressed file.
+
+## Deploy on GitHub Pages
+
+1. Push this repository to GitHub.
+2. Go to **Settings -> Pages** in your repo.
+3. Under **Build and deployment**, choose:
+   - **Source:** `Deploy from a branch`
+   - **Branch:** `main` (or your default branch)
+   - **Folder:** `/ (root)`
+4. Save and wait for GitHub Pages to publish.
+5. Open your site at: `https://<your-username>.github.io/<your-repo>/`
+
+Because this app is fully static and runs entirely in the browser, it works on GitHub Pages without a backend.
 
 ## Notes
 
